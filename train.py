@@ -1,3 +1,8 @@
+"""
+After extracting the dataset and running the split.py script,
+this script orchestrates the training and pruning of the models.
+"""
+
 import time
 import os
 import torch
@@ -11,28 +16,15 @@ from torchvision.datasets import ImageFolder
 from tempfile import TemporaryDirectory
 import matplotlib.pyplot as plt
 
+from DataLoading import get_train_data_pipeline, get_validation_data_pipeline
 from Models import ShuffleNetV2X05, MobileNetV2, MobileNetV3, ResNet18
 
 BATCH_SIZE = 4
-WORKERS = 4
+WORKERS = 8
 
 # augment the data by random resizing, rotation and lighting changes
-train_transforms = v2.Compose([
-    v2.RandomResizedCrop(224),
-    v2.RandomRotation(20),
-    v2.ColorJitter(brightness = (0.3, 1.7), contrast = (0.5, 1.5)),
-    v2.RandomPerspective(),
-    v2.ToTensor(),
-    v2.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-])
-
-val_transforms = v2.Compose([
-    v2.Resize(256), # let's hope this does not lead to problems with aspect ratio
-    v2.CenterCrop(224),
-    
-    v2.ToTensor(),
-    v2.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-])
+train_transforms = get_train_data_pipeline()
+val_transforms = get_validation_data_pipeline()
 
 training_data = ImageFolder("split_train", train_transforms)
 validation_data = ImageFolder("split_val", val_transforms)
@@ -42,15 +34,18 @@ dataloaders = {"train": DataLoader(training_data, batch_size = BATCH_SIZE, shuff
 num_classes = len(training_data.classes)
 
 # Uncomment for Resnet18
-model = ResNet18(num_classes)
+rnet18= ResNet18(num_classes)
 # Uncomment for Mobilenet v2/v3
-#model = MobileNetV2(num_classes)
-#model = MobileNetV3(num_classes)
+mnetv2 = MobileNetV2(num_classes)
+mnetv3 = MobileNetV3(num_classes)
 # Uncomment for ShuffleNet
-#model = ShuffleNetV2X05(num_classes)
+snetv2 = ShuffleNetV2X05(num_classes)
 
 criterion = nn.CrossEntropyLoss()
 optimizer_ft = lambda model_ft: optim.SGD(model_ft.parameters(), lr=0.001, momentum=0.9)
 exp_lr_scheduler = lambda optimizer_ft: lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
 
-model.train(dataloaders["train"], dataloaders["val"], criterion, optimizer_ft, exp_lr_scheduler, num_epochs = 2)
+mnetv2.with_environment(dataloaders["train"], dataloaders["val"], criterion, optimizer_ft, exp_lr_scheduler).train_and_prune()
+mnetv3.with_environment(dataloaders["train"], dataloaders["val"], criterion, optimizer_ft, exp_lr_scheduler).train_and_prune()
+snetv2.with_environment(dataloaders["train"], dataloaders["val"], criterion, optimizer_ft, exp_lr_scheduler).train_and_prune()
+rnet18.with_environment(dataloaders["train"], dataloaders["val"], criterion, optimizer_ft, exp_lr_scheduler).train_and_prune()
